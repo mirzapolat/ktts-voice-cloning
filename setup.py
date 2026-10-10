@@ -1,0 +1,58 @@
+from setuptools import setup, find_packages
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setup(
+    name="kittenml",
+    version="0.9.4",
+    author="KittenML",
+    author_email="",
+    description="Text-to-speech with voice cloning and expression control, plus ultra-lightweight models that run on CPU",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/KittenML/KittenTTS",
+    packages=find_packages(),
+    include_package_data=True,
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Multimedia :: Sound/Audio :: Speech",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
+    python_requires=">=3.10",
+    install_requires=[
+        "torch>=2.6",
+        "torchaudio>=2.6",
+        "transformers>=4.55",
+        "safetensors",
+        "numpy",
+        "scipy",
+        "soundfile",
+        "librosa",
+        "huggingface_hub",
+        "brotli",
+        "einops",
+        "diffusers",
+        "omegaconf",
+        "hydra-core",
+        "s3tokenizer",
+        "resemble-perth",
+        "pyloudnorm",
+        "kitten-text-processing>=0.1.0",
+        "espeakng_loader",
+        "phonemizer",
+        "onnxruntime",
+    ],
+    keywords="text-to-speech, tts, speech-synthesis, voice-cloning, neural-networks, onnx",
+    project_urls={
+        "Bug Reports": "https://github.com/KittenML/KittenTTS/issues",
+        "Source": "https://github.com/KittenML/KittenTTS",
+    },
+)

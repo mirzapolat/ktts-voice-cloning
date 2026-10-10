@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Start KittenTTS Studio. When it stops (Ctrl+C or crash), delete temp files
+# (uploaded/recorded clips, Python bytecode caches). outputs/ and models are kept.
+set -u
+cd "$(dirname "$0")"
+
+export GRADIO_TEMP_DIR="$PWD/.gradio_tmp"
+
+cleanup() {
+    trap - EXIT INT TERM
+    echo
+    echo "Cleaning up temp files…"
+    rm -rf "$GRADIO_TEMP_DIR" .gradio
+    find . -path ./.venv -prune -o -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
+    echo "Done."
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+.venv/bin/python app.py
