@@ -58,6 +58,10 @@ ONNX_MODELS = {
 }
 ONNX_VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
 K2_ENGINE, ONNX_ENGINE = "KittenTTS 2", "Lightweight (ONNX)"
+# Fastest first; KittenTTS 2 only picks CUDA on its own, so Apple GPUs need asking for.
+DEVICES = [d for d, ok in (("cuda", torch.cuda.is_available()),
+                           ("mps", torch.backends.mps.is_available()),
+                           ("cpu", True)) if ok]
 
 _models = {}
 
@@ -76,6 +80,11 @@ def save(audio, sr, tag):
     path = OUT_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}-{tag}.wav"
     sf.write(path, audio, sr)
     return str(path)
+
+
+def from_start(audio):
+    """A new result for the player, rewound so it doesn't resume where the last one stopped."""
+    return gr.update(value=audio, playback_position=0)
 
 
 def fmt_secs(s):
@@ -355,11 +364,12 @@ def synthesize(text, speaker_mode, voice, ref_audio, ref_text, ref_prompt,
                preset, normalize, stream, override, temperature, top_k, top_p, min_p,
                max_new_tokens, seed, rep_penalty, rep_window, run_penalty, run_grace,
                chunk_chars, chunk_min_chars, chunk_gap, use_emotion, weights, decoder,
-               engine, onnx_model, speed, progress=gr.Progress()):
+               device, engine, onnx_model, speed, progress=gr.Progress()):
     if not text.strip():
         raise gr.Error("Enter some text first.")
     if engine == ONNX_ENGINE:
-        yield synthesize_onnx(text, onnx_model, voice, speed, progress)
+        audio, message = synthesize_onnx(text, onnx_model, voice, speed, progress)
+        yield from_start(audio), message
         return
 
     kwargs = dict(preset=preset, normalize=normalize, max_new_tokens=int(max_new_tokens))
@@ -393,10 +403,11 @@ def synthesize(text, speaker_mode, voice, ref_audio, ref_text, ref_prompt,
         advanced["use_emotion"] = use_emotion == "Force on"
     kwargs["advanced"] = advanced
 
-    key = ("KittenML/kitten-tts-2", (("decoder", decoder), ("weights", weights)))
+    key = ("KittenML/kitten-tts-2",
+           (("decoder", decoder), ("device", device), ("weights", weights)))
     if key not in _models:
         progress(None, desc="Loading KittenTTS 2 (first use downloads ~1 GB)…")
-    m = get_model("KittenML/kitten-tts-2", weights=weights, decoder=decoder)
+    m = get_model("KittenML/kitten-tts-2", weights=weights, decoder=decoder, device=device)
     sr = m.sample_rate
 
     chunks = split_chunks(m, text, normalize, advanced)
@@ -418,7 +429,9 @@ def synthesize(text, speaker_mode, voice, ref_audio, ref_text, ref_prompt,
             for chunk in m.generate_stream(text, **kwargs):
                 chunks.append(chunk)
                 total = sum(len(c) for c in chunks) / sr
-                yield (sr, np.concatenate(chunks)), \
+                audio = (sr, np.concatenate(chunks))
+                # only the first chunk rewinds; later ones mustn't yank the listener back
+                yield from_start(audio) if len(chunks) == 1 else audio, \
                     f"Chunk {len(chunks)} ready — {total:.1f}s of audio so far…"
             audio = np.concatenate(chunks)
         else:
@@ -426,7 +439,8 @@ def synthesize(text, speaker_mode, voice, ref_audio, ref_text, ref_prompt,
 
     path = save(audio, sr, tag)
     took = time.time() - start
-    yield (sr, audio), f"Done: {len(audio) / sr:.1f}s of audio in {took:.1f}s. Saved to {path}"
+    result = (sr, audio) if stream else from_start((sr, audio))
+    yield result, f"Done: {len(audio) / sr:.1f}s of audio in {took:.1f}s. Saved to {path}"
 
 
 def add_emotion(text, emotion):
@@ -686,6 +700,9 @@ with gr.Blocks(title="KittenTTS Studio") as demo:
                                         "lower quality · full = bf16")
                 decoder = gr.Radio(["default", "student_w4"], value="default", label="Decoder",
                                    info="student_w4 is 39 MB vs 459 MB, lower quality, not faster")
+                device = gr.Radio(DEVICES, value=DEVICES[0], label="Device",
+                                  info="cuda = NVIDIA GPU · mps = Apple GPU, ~2.6x faster than "
+                                       "cpu here (first run warms up) · cpu = slowest")
 
             gr.Markdown(SETTINGS_HELP, elem_classes="subtle")
 
@@ -766,7 +783,7 @@ with gr.Blocks(title="KittenTTS Studio") as demo:
               preset, normalize, stream, override, temperature, top_k, top_p, min_p,
               max_new_tokens, seed, rep_penalty, rep_window, run_penalty, run_grace,
               chunk_chars, chunk_min_chars, chunk_gap, use_emotion, weights, decoder,
-              engine, onnx_model, speed],
+              device, engine, onnx_model, speed],
              [out_audio, status])
 
 if __name__ == "__main__":
